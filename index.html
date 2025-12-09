@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>77富婆計劃 V8.1</title>
+    <title>77富婆計劃 V9.0</title>
     
     <!-- React & Libraries -->
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -95,7 +95,7 @@
             set: (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch (e) {} }
         };
 
-        // --- 1. 自製確認視窗 (解決手機不跳視窗的問題) ---
+        // --- Custom Confirm Modal ---
         const CustomConfirmModal = ({ isOpen, message, onConfirm, onCancel }) => {
             if (!isOpen) return null;
             return (
@@ -181,31 +181,98 @@
             );
         };
 
-        // --- Card Manager Modal (Integration with Custom Confirm) ---
+        // --- NEW: Category Manager Modal ---
+        const CategoryManagerModal = ({ categories, onClose, onUpdateCategories }) => {
+            const [newCategory, setNewCategory] = useState('');
+            const [editIndex, setEditIndex] = useState(-1);
+            const [editValue, setEditValue] = useState('');
+            const [deleteTarget, setDeleteTarget] = useState(null);
+
+            const handleAdd = () => {
+                if (newCategory && !categories.includes(newCategory)) {
+                    onUpdateCategories([...categories, newCategory]);
+                    setNewCategory('');
+                }
+            };
+
+            const startEdit = (index, value) => {
+                setEditIndex(index);
+                setEditValue(value);
+            };
+
+            const saveEdit = () => {
+                if (editValue) {
+                    const newCats = [...categories];
+                    newCats[editIndex] = editValue;
+                    onUpdateCategories(newCats);
+                    setEditIndex(-1);
+                }
+            };
+
+            const confirmDelete = () => {
+                if (deleteTarget !== null) {
+                    const newCats = categories.filter((_, i) => i !== deleteTarget);
+                    onUpdateCategories(newCats);
+                    setDeleteTarget(null);
+                }
+            };
+
+            return (
+                <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+                    <CustomConfirmModal 
+                        isOpen={deleteTarget !== null}
+                        message="確定刪除此分類嗎？歷史記帳資料不會受影響。"
+                        onConfirm={confirmDelete}
+                        onCancel={() => setDeleteTarget(null)}
+                    />
+                    <div className="bg-white rounded-[32px] p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200">
+                        <div className="flex justify-between items-center mb-4">
+                            <h3 className="text-lg font-bold text-m-text">分類管理</h3>
+                            <button onClick={onClose} className="text-gray-400 p-1"><Icon name="x" size={24}/></button>
+                        </div>
+
+                        <div className="mb-4 max-h-60 overflow-y-auto no-scrollbar space-y-2">
+                            {categories.map((cat, idx) => (
+                                <div key={idx} className="flex justify-between items-center p-3 rounded-xl bg-gray-50">
+                                    {editIndex === idx ? (
+                                        <div className="flex gap-2 w-full">
+                                            <input type="text" className="flex-1 rounded-lg px-2 py-1 text-sm" value={editValue} onChange={(e)=>setEditValue(e.target.value)} />
+                                            <button onClick={saveEdit} className="text-green-500"><Icon name="check" size={18}/></button>
+                                        </div>
+                                    ) : (
+                                        <>
+                                            <div className="text-sm font-bold text-m-text">{cat}</div>
+                                            <div className="flex gap-2">
+                                                <button onClick={() => startEdit(idx, cat)} className="text-gray-400 hover:text-blue-400 p-1"><Icon name="pencil" size={16}/></button>
+                                                <button onClick={() => setDeleteTarget(idx)} className="text-gray-300 hover:text-red-400 p-1"><Icon name="trash-2" size={16}/></button>
+                                            </div>
+                                        </>
+                                    )}
+                                </div>
+                            ))}
+                        </div>
+
+                        <div className="border-t border-dashed border-gray-200 pt-4 flex gap-2">
+                            <input type="text" placeholder="輸入新分類名稱" className="flex-1 rounded-xl px-4 py-2 text-sm bg-gray-50 focus:bg-white border focus:border-m-pink" value={newCategory} onChange={e => setNewCategory(e.target.value)} />
+                            <button onClick={handleAdd} className="px-4 py-2 rounded-xl text-white text-sm bg-[#dcb5bb] font-bold shadow-sm">新增</button>
+                        </div>
+                    </div>
+                </div>
+            );
+        };
+
+        // --- Card Manager Modal ---
         const CardManagerModal = ({ cards, onClose, onUpdateCards }) => {
             const [form, setForm] = useState({ id: '', name: '', stmtDay: '', dueDay: '' });
             const [isEditing, setIsEditing] = useState(false);
-            
-            // 刪除專用的 State
             const [deleteTargetId, setDeleteTargetId] = useState(null);
 
-            const handleEdit = (card) => { 
-                setForm(card); 
-                setIsEditing(true); 
-            };
-            
-            // 步驟 1: 點擊刪除按鈕 -> 設定要刪除的ID -> 觸發彈窗
-            const requestDelete = (id) => {
-                setDeleteTargetId(id);
-            };
-
-            // 步驟 2: 在彈窗按確認 -> 執行刪除
+            const handleEdit = (card) => { setForm(card); setIsEditing(true); };
+            const requestDelete = (id) => { setDeleteTargetId(id); };
             const confirmDelete = () => {
                 if (deleteTargetId) {
                     const newCards = cards.filter(c => c.id !== deleteTargetId);
                     onUpdateCards(newCards);
-                    
-                    // 如果刪除的是正在編輯的卡片，重置表單
                     if (isEditing && form.id === deleteTargetId) {
                         setForm({ id: '', name: '', stmtDay: '', dueDay: '' });
                         setIsEditing(false);
@@ -216,7 +283,6 @@
 
             const handleSubmit = () => {
                 if(!form.name) return;
-                
                 if (isEditing) { 
                     const updatedCards = cards.map(c => c.id === form.id ? { ...c, ...form } : c);
                     onUpdateCards(updatedCards); 
@@ -228,56 +294,33 @@
                 setIsEditing(false);
             };
             
-            const handleCancelEdit = () => { 
-                setForm({ id: '', name: '', stmtDay: '', dueDay: '' }); 
-                setIsEditing(false); 
-            };
+            const handleCancelEdit = () => { setForm({ id: '', name: '', stmtDay: '', dueDay: '' }); setIsEditing(false); };
 
             return (
                 <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-                    
-                    {/* 這裡插入我們自製的確認彈窗 (層級最高 z-60) */}
                     <CustomConfirmModal 
                         isOpen={!!deleteTargetId}
                         message="確定要刪除這張卡片嗎？相關的記帳資料雖然會保留，但篩選器選項將會消失。"
                         onConfirm={confirmDelete}
                         onCancel={() => setDeleteTargetId(null)}
                     />
-
                     <div className="bg-white rounded-[32px] p-6 w-full max-w-sm shadow-2xl animate-in fade-in zoom-in duration-200">
                         <div className="flex justify-between items-center mb-4">
                             <h3 className="text-lg font-bold text-m-text">{isEditing ? '編輯卡片' : '卡片管理'}</h3>
                             <button onClick={onClose} className="text-gray-400 p-1"><Icon name="x" size={24}/></button>
                         </div>
-                        
-                        {/* List Area */}
                         <div className="mb-4 max-h-60 overflow-y-auto no-scrollbar space-y-2">
                             {cards.map(c => (
                                 <div key={c.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isEditing && form.id === c.id ? 'bg-[#dcb5bb]/10 border-[#dcb5bb]' : 'bg-gray-50 border-transparent'}`}>
-                                    
-                                    {/* Content Area (Click to Edit) */}
                                     <div className="flex-1 cursor-pointer" onClick={() => handleEdit(c)}>
                                         <div className="text-sm font-bold text-m-text">{c.name}</div>
                                         <div className="text-[10px] text-m-sub mt-0.5">結帳 {c.stmtDay} / 繳款 {c.dueDay}</div>
                                     </div>
-
-                                    {/* Delete Button (Calls custom modal) */}
-                                    <button 
-                                        type="button"
-                                        className="ml-3 p-2 bg-white rounded-full shadow-sm text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors border border-gray-100"
-                                        onClick={(e) => {
-                                            e.stopPropagation(); 
-                                            requestDelete(c.id);
-                                        }}
-                                    >
-                                        <Icon name="trash-2" size={18}/>
-                                    </button>
+                                    <button type="button" className="ml-3 p-2 bg-white rounded-full shadow-sm text-gray-300 hover:text-red-500 hover:bg-red-50 transition-colors border border-gray-100" onClick={(e) => { e.stopPropagation(); requestDelete(c.id); }}><Icon name="trash-2" size={18}/></button>
                                 </div>
                             ))}
                             {cards.length === 0 && <div className="text-center text-gray-400 text-xs py-4">目前沒有信用卡</div>}
                         </div>
-
-                        {/* Form Area */}
                         <div className={`border-t border-dashed border-gray-200 pt-4 space-y-3 ${isEditing ? 'bg-gray-50/50 -mx-2 px-2 pb-2 rounded-xl border-t-0' : ''}`}>
                             <div className="flex justify-between items-center mb-1">
                                 <label className="text-[10px] text-m-sub font-bold uppercase tracking-wider">{isEditing ? 'Editing Info' : 'New Card Info'}</label>
@@ -290,10 +333,7 @@
                             </div>
                             <div className="flex gap-2 pt-2">
                                 {isEditing ? (
-                                    <>
-                                        <button type="button" onClick={() => requestDelete(form.id)} className="flex-1 py-2.5 rounded-xl text-red-400 text-sm bg-red-50 font-bold hover:bg-red-100 transition-colors">刪除此卡</button>
-                                        <button type="button" onClick={handleCancelEdit} className="flex-1 py-2.5 rounded-xl text-gray-500 text-sm bg-gray-200 font-medium hover:bg-gray-300 transition-colors">取消</button>
-                                    </>
+                                    <><button type="button" onClick={() => requestDelete(form.id)} className="flex-1 py-2.5 rounded-xl text-red-400 text-sm bg-red-50 font-bold hover:bg-red-100 transition-colors">刪除此卡</button><button type="button" onClick={handleCancelEdit} className="flex-1 py-2.5 rounded-xl text-gray-500 text-sm bg-gray-200 font-medium hover:bg-gray-300 transition-colors">取消</button></>
                                 ) : (
                                     <button type="button" onClick={onClose} className="flex-1 py-2.5 rounded-xl text-gray-500 text-sm bg-gray-100 font-medium hover:bg-gray-200 transition-colors">關閉</button>
                                 )}
@@ -309,60 +349,35 @@
             const getBillInfo = (card) => {
                 const stmtDay = parseInt(card.stmtDay);
                 if (isNaN(stmtDay)) return { total: 0, dateRange: '', dueDate: '-' };
-
                 const [year, month] = selectedMonth.split('-').map(Number);
                 const endDate = new Date(year, month - 1, stmtDay); 
                 const startDate = new Date(year, month - 2, stmtDay + 1); 
-                
                 const dueDateDisplay = `${card.dueDay}日`;
-
-                const total = transactions
-                    .filter(t => t.type !== 'lending' && t.cardId === card.id)
-                    .filter(t => {
-                        const txDate = new Date(t.date);
-                        return txDate >= startDate && txDate <= endDate;
-                    })
-                    .reduce((acc, curr) => acc + parseFloat(curr.amount), 0);
-
+                const total = transactions.filter(t => t.type !== 'lending' && t.cardId === card.id).filter(t => {
+                    const txDate = new Date(t.date);
+                    return txDate >= startDate && txDate <= endDate;
+                }).reduce((acc, curr) => acc + parseFloat(curr.amount), 0);
                 return { total, dueDateDisplay };
             };
-
             const togglePaid = (cardId) => {
                 const key = `${cardId}_${selectedMonth}`;
                 const newStatus = { ...paidStatus, [key]: !paidStatus[key] };
                 setPaidStatus(newStatus);
             };
-
             return (
                 <Card className="mt-4 mb-4">
-                    <h3 className="text-sm font-bold text-m-text mb-3 tracking-wide flex items-center">
-                        <Icon name="check-square" size={16} className="mr-2 text-m-pink"/>
-                        本月繳款清單 ({selectedMonth})
-                    </h3>
+                    <h3 className="text-sm font-bold text-m-text mb-3 tracking-wide flex items-center"><Icon name="check-square" size={16} className="mr-2 text-m-pink"/>本月繳款清單 ({selectedMonth})</h3>
                     <div className="space-y-3">
                         {cards.map(card => {
                             const { total, dueDateDisplay } = getBillInfo(card);
                             const isPaid = paidStatus[`${card.id}_${selectedMonth}`];
-                            
                             return (
                                 <div key={card.id} className={`flex items-center justify-between p-3 rounded-xl border transition-all ${isPaid ? 'bg-gray-50 border-gray-100 opacity-60' : 'bg-white border-gray-100 shadow-sm'}`}>
                                     <div className="flex items-center gap-3">
-                                        <input 
-                                            type="checkbox" 
-                                            className="custom-checkbox"
-                                            checked={!!isPaid} 
-                                            onChange={() => togglePaid(card.id)}
-                                        />
-                                        <div>
-                                            <div className={`text-sm font-bold ${isPaid ? 'text-gray-400 line-through' : 'text-m-text'}`}>{card.name}</div>
-                                            <div className="text-[10px] text-m-sub">
-                                                繳款期限: {dueDateDisplay} {isPaid ? '(已繳)' : ''}
-                                            </div>
-                                        </div>
+                                        <input type="checkbox" className="custom-checkbox" checked={!!isPaid} onChange={() => togglePaid(card.id)} />
+                                        <div><div className={`text-sm font-bold ${isPaid ? 'text-gray-400 line-through' : 'text-m-text'}`}>{card.name}</div><div className="text-[10px] text-m-sub">繳款期限: {dueDateDisplay} {isPaid ? '(已繳)' : ''}</div></div>
                                     </div>
-                                    <div className={`font-bold ${isPaid ? 'text-gray-300' : 'text-m-text'}`}>
-                                        ${total.toLocaleString()}
-                                    </div>
+                                    <div className={`font-bold ${isPaid ? 'text-gray-300' : 'text-m-text'}`}>${total.toLocaleString()}</div>
                                 </div>
                             );
                         })}
@@ -377,21 +392,15 @@
         const HomeView = ({ stats, projection, config, setConfig, onSaveTransactions }) => {
             const [showSettings, setShowSettings] = useState(false);
             const [input, setInput] = useState({ depositCash: '', depositEtf: '', repayment: '' });
-
             const handleSubmit = () => {
                 const newTrans = [];
                 const today = new Date().toISOString().split('T')[0];
                 if (input.depositCash) newTrans.push({ type: 'deposit_cash', amount: input.depositCash, note: '現金存入' });
                 if (input.depositEtf) newTrans.push({ type: 'deposit_etf', amount: input.depositEtf, note: 'ETF存入' });
                 if (input.repayment) newTrans.push({ type: 'repayment', amount: input.repayment, note: '男友還款' });
-
-                if (newTrans.length > 0) {
-                    onSaveTransactions(newTrans, today);
-                    setInput({ depositCash: '', depositEtf: '', repayment: '' });
-                }
+                if (newTrans.length > 0) { onSaveTransactions(newTrans, today); setInput({ depositCash: '', depositEtf: '', repayment: '' }); }
             };
             const handleConfigChange = (e) => setConfig({ ...config, [e.target.name]: e.target.value });
-
             return (
                 <div className="space-y-5 pb-48 page-transition">
                     <div className="bg-[#dcb5bb] rounded-[32px] p-8 text-white shadow-sm relative overflow-hidden mx-1">
@@ -403,17 +412,11 @@
                                 <div><div className="text-[10px] text-white/70 uppercase tracking-wider mb-1">Portfolio (ETF)</div><div className="text-lg font-medium">${stats.etfAssets.toLocaleString()}</div></div>
                                 <div><div className="text-[10px] text-white/70 uppercase tracking-wider mb-1">Cash</div><div className="text-lg font-medium">${stats.cashAssets.toLocaleString()}</div></div>
                             </div>
-                            <div className="mt-6 pt-4 border-t border-white/20 flex justify-between items-center">
-                                <div className="flex items-center text-white/90"><span className="text-xs mr-2">男友欠款總額</span><span className="font-medium text-lg">${stats.currentDebt.toLocaleString()}</span></div>
-                                <Icon name="heart-handshake" className="text-white/80" />
-                            </div>
+                            <div className="mt-6 pt-4 border-t border-white/20 flex justify-between items-center"><div className="flex items-center text-white/90"><span className="text-xs mr-2">男友欠款總額</span><span className="font-medium text-lg">${stats.currentDebt.toLocaleString()}</span></div><Icon name="heart-handshake" className="text-white/80" /></div>
                         </div>
                     </div>
-
                     <div className="px-2">
-                         <div onClick={() => setShowSettings(!showSettings)} className="flex justify-center py-2 cursor-pointer opacity-50 hover:opacity-100 transition-opacity">
-                            {showSettings ? <Icon name="chevron-up" size={16} className="text-m-text"/> : <Icon name="grip-horizontal" size={20} className="text-m-pink"/>}
-                         </div>
+                         <div onClick={() => setShowSettings(!showSettings)} className="flex justify-center py-2 cursor-pointer opacity-50 hover:opacity-100 transition-opacity">{showSettings ? <Icon name="chevron-up" size={16} className="text-m-text"/> : <Icon name="grip-horizontal" size={20} className="text-m-pink"/>}</div>
                         {showSettings && (
                             <Card className="mb-4 animate-in slide-in-from-top-2 fade-in duration-300">
                                 <h3 className="text-xs font-bold text-m-sub uppercase mb-4 tracking-widest text-center">Initial Settings</h3>
@@ -426,21 +429,13 @@
                             </Card>
                         )}
                     </div>
-
                     <div className="px-1">
                         <h3 className="text-sm font-bold text-m-text mb-3 ml-2 tracking-wide">Monthly Checklist</h3>
                         <Card className="space-y-4">
-                            {[
-                                { label: '現金存入', icon: 'banknote', color: 'text-[#b5c4b1]', bg: 'bg-[#b5c4b1]/20', val: input.depositCash, key: 'depositCash' },
-                                { label: 'ETF 投入', icon: 'landmark', color: 'text-[#a6b4c3]', bg: 'bg-[#a6b4c3]/20', val: input.depositEtf, key: 'depositEtf' },
-                                { label: '男友還款', icon: 'user-minus', color: 'text-[#dcb5bb]', bg: 'bg-[#dcb5bb]/20', val: input.repayment, key: 'repayment' }
-                            ].map((item, idx) => (
+                            {[{ label: '現金存入', icon: 'banknote', color: 'text-[#b5c4b1]', bg: 'bg-[#b5c4b1]/20', val: input.depositCash, key: 'depositCash' }, { label: 'ETF 投入', icon: 'landmark', color: 'text-[#a6b4c3]', bg: 'bg-[#a6b4c3]/20', val: input.depositEtf, key: 'depositEtf' }, { label: '男友還款', icon: 'user-minus', color: 'text-[#dcb5bb]', bg: 'bg-[#dcb5bb]/20', val: input.repayment, key: 'repayment' }].map((item, idx) => (
                                 <div key={idx} className="flex items-center space-x-3">
                                     <div className={`p-2.5 rounded-xl ${item.bg} ${item.color}`}><Icon name={item.icon} size={18}/></div>
-                                    <div className="flex-1">
-                                        <label className="text-[10px] text-m-sub block mb-0.5">{item.label}</label>
-                                        <input type="number" value={item.val} onChange={(e) => setInput({...input, [item.key]: e.target.value})} className="w-full bg-transparent border-b border-dashed border-gray-300 py-1 focus:border-solid focus:border-[#dcb5bb] outline-none font-medium text-m-text rounded-none px-0" placeholder="0" inputMode="numeric"/>
-                                    </div>
+                                    <div className="flex-1"><label className="text-[10px] text-m-sub block mb-0.5">{item.label}</label><input type="number" value={item.val} onChange={(e) => setInput({...input, [item.key]: e.target.value})} className="w-full bg-transparent border-b border-dashed border-gray-300 py-1 focus:border-solid focus:border-[#dcb5bb] outline-none font-medium text-m-text rounded-none px-0" placeholder="0" inputMode="numeric"/></div>
                                 </div>
                             ))}
                             <button onClick={handleSubmit} className="w-full bg-[#dcb5bb] hover:bg-[#d4a5a5] text-white py-3.5 rounded-2xl font-bold shadow-md active:scale-95 transition-all text-sm tracking-widest mt-2">SAVE ASSETS</button>
@@ -456,83 +451,85 @@
             );
         };
 
-        const ExpenseView = ({ transactions, customCategories, setCustomCategories, cards, setCards, onSaveTransaction, onDelete, paidBills, setPaidBills }) => {
-            const [input, setInput] = useState({ amount: '', method: '現金', cardId: '', category: '飲食', customCategory: '', note: '', date: new Date().toISOString().split('T')[0] });
+        const ExpenseView = ({ transactions, customCategories, setCustomCategories, cards, setCards, onSaveTransaction, onDelete, paidBills, setPaidBills, onUpdateTransactions }) => {
+            const [input, setInput] = useState({ id: null, amount: '', method: '現金', cardId: '', category: '飲食', customCategory: '', note: '', date: new Date().toISOString().split('T')[0] });
             const [isAddingCategory, setIsAddingCategory] = useState(false);
             const [isLoan, setIsLoan] = useState(false);
             const [selectedMonth, setSelectedMonth] = useState('');
             const [selectedCardFilter, setSelectedCardFilter] = useState('all');
             const [showCardManager, setShowCardManager] = useState(false);
+            const [showCategoryManager, setShowCategoryManager] = useState(false);
+            const [isEditingTx, setIsEditingTx] = useState(false);
 
             useEffect(() => { setSelectedMonth(new Date().toISOString().substring(0, 7)); }, []);
-
-            // Ensure filter is valid
             useEffect(() => {
                 if (selectedCardFilter !== 'all' && selectedCardFilter !== 'cash') {
                     const cardExists = cards.find(c => c.id === selectedCardFilter);
-                    if (!cardExists) {
-                        setSelectedCardFilter('all');
-                    }
+                    if (!cardExists) { setSelectedCardFilter('all'); }
                 }
             }, [cards, selectedCardFilter]);
 
+            const startEditTransaction = (tx) => {
+                setInput({
+                    id: tx.id,
+                    amount: tx.amount,
+                    method: tx.method || '現金',
+                    cardId: tx.cardId || '',
+                    category: tx.category,
+                    customCategory: '',
+                    note: tx.note || '',
+                    date: tx.date
+                });
+                setIsLoan(tx.type === 'lending');
+                setIsEditingTx(true);
+                // Scroll to top to see form
+                window.scrollTo({ top: 0, behavior: 'smooth' });
+            };
+
             const handleSubmit = () => {
                 if (!input.amount) return;
-                let type = 'expense';
-                let category = input.category;
-                
-                if (isLoan) { 
-                    type = 'lending'; 
-                    category = '男友借款'; 
-                } else {
-                    category = isAddingCategory ? input.customCategory : input.category;
-                    if (isAddingCategory && category && !customCategories.includes(category)) { 
-                        setCustomCategories([...customCategories, category]); 
-                    }
-                }
-
+                let type = 'expense', category = input.category;
+                if (isLoan) { type = 'lending'; category = '男友借款'; } else { category = isAddingCategory ? input.customCategory : input.category; if (isAddingCategory && category && !customCategories.includes(category)) { setCustomCategories([...customCategories, category]); } }
                 let finalCardId = input.cardId;
-                if (input.method === '刷卡' && !finalCardId && cards.length > 0) {
-                    finalCardId = cards[0].id;
-                }
-
+                if (input.method === '刷卡' && !finalCardId && cards.length > 0) { finalCardId = cards[0].id; }
+                
                 const newTx = { 
                     type, 
                     amount: input.amount, 
                     method: input.method, 
-                    cardId: input.method === '刷卡' ? finalCardId : null,
+                    cardId: input.method === '刷卡' ? finalCardId : null, 
                     category, 
                     date: input.date, 
                     note: input.note 
                 };
-                onSaveTransaction(newTx);
-                setInput({ ...input, amount: '', note: '', customCategory: '' });
-                setIsAddingCategory(false);
-                setIsLoan(false);
+
+                if (isEditingTx && input.id) {
+                    // Update existing
+                    onUpdateTransactions({ ...newTx, id: input.id });
+                    setIsEditingTx(false);
+                } else {
+                    // Add new
+                    onSaveTransaction(newTx);
+                }
+
+                setInput({ id: null, amount: '', method: '現金', cardId: '', category: '飲食', customCategory: '', note: '', date: new Date().toISOString().split('T')[0] }); 
+                setIsAddingCategory(false); 
+                setIsLoan(false); 
                 setSelectedMonth(input.date.substring(0, 7));
             };
 
             const expenseHistory = transactions.filter(t => t.type === 'expense' || t.type === 'lending');
-            
             const availableMonths = useMemo(() => {
                 const months = new Set(expenseHistory.map(t => t.date.substring(0, 7)));
                 months.add(new Date().toISOString().substring(0, 7));
                 return Array.from(months).sort().reverse();
             }, [expenseHistory]);
+            const displayedMonth = selectedMonth || availableMonths[0];
 
-            const displayedMonth = selectedMonth || availableMonths[0]; // YYYY-MM
-
-            // --- Billing Cycle Logic for Filter ---
-            let filterDescription = "";
-            let filteredItems = [];
-
+            let filterDescription = "", filteredItems = [];
             if (selectedCardFilter === 'all' || selectedCardFilter === 'cash') {
                 filterDescription = selectedCardFilter === 'all' ? '當月總支出 (自然月)' : '當月現金支出';
-                filteredItems = expenseHistory.filter(t => {
-                    const monthMatch = t.date.startsWith(displayedMonth);
-                    const typeMatch = selectedCardFilter === 'all' ? true : t.method === '現金';
-                    return monthMatch && typeMatch;
-                });
+                filteredItems = expenseHistory.filter(t => t.date.startsWith(displayedMonth) && (selectedCardFilter === 'all' ? true : t.method === '現金'));
             } else {
                 const selectedCard = cards.find(c => c.id === selectedCardFilter);
                 if (selectedCard) {
@@ -543,11 +540,7 @@
                         const startDate = new Date(year, month - 2, stmtDay + 1); 
                         const fmt = (d) => `${d.getMonth()+1}/${d.getDate()}`;
                         filterDescription = `${selectedCard.name} (${fmt(startDate)} - ${fmt(endDate)})`;
-                        filteredItems = expenseHistory.filter(t => {
-                            if (t.cardId !== selectedCardFilter) return false;
-                            const txDate = new Date(t.date);
-                            return txDate >= startDate && txDate <= endDate;
-                        });
+                        filteredItems = expenseHistory.filter(t => { if (t.cardId !== selectedCardFilter) return false; const txDate = new Date(t.date); return txDate >= startDate && txDate <= endDate; });
                     } else {
                         filterDescription = `${selectedCard.name} (自然月)`;
                         filteredItems = expenseHistory.filter(t => t.date.startsWith(displayedMonth) && t.cardId === selectedCardFilter);
@@ -555,241 +548,83 @@
                 }
             }
 
-            const currentMonthItems = filteredItems.sort((a,b) => b.id - a.id);
+            const currentMonthItems = filteredItems.sort((a, b) => {
+                if (a.date !== b.date) { return b.date.localeCompare(a.date); }
+                return b.id - a.id; 
+            });
+            
             const currentMonthTotal = currentMonthItems.reduce((acc, curr) => acc + parseFloat(curr.amount), 0);
 
             return (
                 <div className="space-y-6 pb-24 page-transition px-1 pt-4">
                     <div className="flex justify-between items-center px-2">
                         <h2 className="text-xl font-bold text-m-text tracking-wide">Expenditure</h2>
-                        <button onClick={() => setShowCardManager(true)} className="text-xs text-m-sub bg-white px-3 py-1.5 rounded-full shadow-sm border border-gray-100 flex items-center">
-                            <Icon name="credit-card" size={14} className="mr-1"/> 卡片管理
-                        </button>
+                        <button onClick={() => setShowCardManager(true)} className="text-xs text-m-sub bg-white px-3 py-1.5 rounded-full shadow-sm border border-gray-100 flex items-center"><Icon name="credit-card" size={14} className="mr-1"/> 卡片管理</button>
                     </div>
-
-                    {/* Card Hint ScrollView */}
                     <div className="flex overflow-x-auto pb-2 px-1 space-x-3 no-scrollbar snap-x">
                         {cards.map(card => (
                             <div key={card.id} className="min-w-[140px] bg-white p-3 rounded-2xl shadow-sm border border-gray-50 snap-center flex flex-col justify-between h-24 relative overflow-hidden group">
                                 <div className="absolute top-0 right-0 w-12 h-12 bg-gray-50 rounded-bl-full -mr-2 -mt-2 z-0"></div>
-                                <div className="relative z-10">
-                                    <div className="text-xs font-bold text-m-text truncate">{card.name}</div>
-                                </div>
-                                <div className="relative z-10 grid grid-cols-2 gap-1 mt-2">
-                                    <div><div className="text-[9px] text-m-sub uppercase">Stmt</div><div className="text-sm font-medium text-m-pink">{card.stmtDay}</div></div>
-                                    <div><div className="text-[9px] text-m-sub uppercase">Due</div><div className="text-sm font-medium text-[#a6b4c3]">{card.dueDay}</div></div>
-                                </div>
+                                <div className="relative z-10"><div className="text-xs font-bold text-m-text truncate">{card.name}</div></div>
+                                <div className="relative z-10 grid grid-cols-2 gap-1 mt-2"><div><div className="text-[9px] text-m-sub uppercase">Stmt</div><div className="text-sm font-medium text-m-pink">{card.stmtDay}</div></div><div><div className="text-[9px] text-m-sub uppercase">Due</div><div className="text-sm font-medium text-[#a6b4c3]">{card.dueDay}</div></div></div>
                             </div>
                         ))}
-                         <div onClick={() => setShowCardManager(true)} className="min-w-[50px] flex items-center justify-center bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 cursor-pointer text-gray-400">
-                            <Icon name="plus" size={20}/>
-                        </div>
+                         <div onClick={() => setShowCardManager(true)} className="min-w-[50px] flex items-center justify-center bg-gray-50 rounded-2xl border-2 border-dashed border-gray-200 cursor-pointer text-gray-400"><Icon name="plus" size={20}/></div>
                     </div>
-
-                    {/* Dedicated Card Manager Modal */}
-                    {showCardManager && (
-                        <CardManagerModal 
-                            cards={cards} 
-                            onClose={() => setShowCardManager(false)} 
-                            onUpdateCards={setCards} 
-                        />
-                    )}
-
-                    {/* Bill Checklist */}
-                    <BillCheckList 
-                        cards={cards} 
-                        transactions={transactions} 
-                        selectedMonth={displayedMonth}
-                        paidStatus={paidBills}
-                        setPaidStatus={setPaidBills}
-                    />
-
+                    {showCardManager && <CardManagerModal cards={cards} onClose={() => setShowCardManager(false)} onUpdateCards={setCards} />}
+                    {showCategoryManager && <CategoryManagerModal categories={customCategories} onClose={() => setShowCategoryManager(false)} onUpdateCategories={setCustomCategories} />}
+                    
+                    <BillCheckList cards={cards} transactions={transactions} selectedMonth={displayedMonth} paidStatus={paidBills} setPaidStatus={setPaidBills} />
+                    
                     <Card>
-                        <div className="flex items-center justify-between mb-6 pb-4 border-b border-dashed border-gray-100">
-                            <span className={`text-sm font-bold ${isLoan ? 'text-m-pink' : 'text-m-sub'}`}>這是男友借款？</span>
-                            <div onClick={() => setIsLoan(!isLoan)} className={`w-12 h-7 rounded-full flex items-center p-1 cursor-pointer transition-all duration-300 ${isLoan ? 'bg-[#dcb5bb]' : 'bg-gray-200'}`}><div className={`bg-white w-5 h-5 rounded-full shadow-sm transition-all duration-300 ${isLoan ? 'translate-x-5' : 'translate-x-0'}`}></div></div>
-                        </div>
-
+                        <div className="flex items-center justify-between mb-6 pb-4 border-b border-dashed border-gray-100"><span className={`text-sm font-bold ${isLoan ? 'text-m-pink' : 'text-m-sub'}`}>這是男友借款？</span><div onClick={() => setIsLoan(!isLoan)} className={`w-12 h-7 rounded-full flex items-center p-1 cursor-pointer transition-all duration-300 ${isLoan ? 'bg-[#dcb5bb]' : 'bg-gray-200'}`}><div className={`bg-white w-5 h-5 rounded-full shadow-sm transition-all duration-300 ${isLoan ? 'translate-x-5' : 'translate-x-0'}`}></div></div></div>
                         <div className="grid grid-cols-2 gap-4 mb-4">
                             <div className="col-span-2"><label className="text-[10px] text-m-sub ml-1 uppercase tracking-wider">Amount</label><div className="relative mt-1"><span className="absolute left-3 top-3 text-m-sub font-light">$</span><input type="number" className="w-full rounded-2xl py-3 pl-8 pr-4 text-xl font-medium text-m-text" value={input.amount} onChange={(e) => setInput({...input, amount: e.target.value})} placeholder="0.00" inputMode="numeric"/></div></div>
                             {!isLoan && (
                                 <>
                                     <div className="col-span-2">
                                         <label className="text-[10px] text-m-sub ml-1 uppercase tracking-wider">Category</label>
-                                        {isAddingCategory ? (
-                                            <div className="flex gap-2 mt-1"><input type="text" className="flex-1 rounded-xl px-3 py-2 text-sm" placeholder="輸入分類" value={input.customCategory} onChange={(e) => setInput({...input, customCategory: e.target.value})} /><button onClick={() => setIsAddingCategory(false)} className="bg-gray-200 text-gray-500 px-3 rounded-xl text-xs">取消</button></div>
-                                        ) : (
-                                            <div className="mt-1"><select className="w-full rounded-xl px-3 py-2.5 text-sm text-m-text" value={input.category} onChange={(e) => { if (e.target.value === 'custom') { setIsAddingCategory(true); setInput({...input, customCategory: ''}); } else { setInput({...input, category: e.target.value}); } }}>{customCategories.map(c => <option key={c} value={c}>{c}</option>)}<option value="custom">+ 自訂分類</option></select></div>
+                                        {isAddingCategory ? (<div className="flex gap-2 mt-1"><input type="text" className="flex-1 rounded-xl px-3 py-2 text-sm" placeholder="輸入分類" value={input.customCategory} onChange={(e) => setInput({...input, customCategory: e.target.value})} /><button onClick={() => setIsAddingCategory(false)} className="bg-gray-200 text-gray-500 px-3 rounded-xl text-xs">取消</button></div>) : (
+                                            <div className="mt-1 flex gap-2">
+                                                <select className="flex-1 rounded-xl px-3 py-2.5 text-sm text-m-text" value={input.category} onChange={(e) => { if (e.target.value === 'custom') { setIsAddingCategory(true); setInput({...input, customCategory: ''}); } else { setInput({...input, category: e.target.value}); } }}>{customCategories.map(c => <option key={c} value={c}>{c}</option>)}<option value="custom">+ 自訂分類</option></select>
+                                                <button onClick={() => setShowCategoryManager(true)} className="px-3 bg-gray-100 rounded-xl text-m-sub"><Icon name="settings" size={16}/></button>
+                                            </div>
                                         )}
                                     </div>
-                                    <div>
-                                        <label className="text-[10px] text-m-sub ml-1 uppercase tracking-wider">Method</label>
-                                        <select className="w-full rounded-xl px-3 py-2 text-sm text-m-text mt-1" value={input.method} onChange={(e) => setInput({...input, method: e.target.value})}>
-                                            <option value="現金">現金</option>
-                                            <option value="刷卡">刷卡</option>
-                                        </select>
-                                    </div>
-                                    {input.method === '刷卡' && (
-                                        <div>
-                                            <label className="text-[10px] text-m-pink ml-1 uppercase tracking-wider font-bold">Select Card</label>
-                                            <select className="w-full rounded-xl px-3 py-2 text-sm text-m-text mt-1 border-[#dcb5bb]" value={input.cardId} onChange={(e) => setInput({...input, cardId: e.target.value})}>
-                                                <option value="" disabled>選擇卡片</option>
-                                                {cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
-                                            </select>
-                                        </div>
-                                    )}
+                                    <div><label className="text-[10px] text-m-sub ml-1 uppercase tracking-wider">Method</label><select className="w-full rounded-xl px-3 py-2 text-sm text-m-text mt-1" value={input.method} onChange={(e) => setInput({...input, method: e.target.value})}><option value="現金">現金</option><option value="刷卡">刷卡</option></select></div>
+                                    {input.method === '刷卡' && (<div><label className="text-[10px] text-m-pink ml-1 uppercase tracking-wider font-bold">Select Card</label><select className="w-full rounded-xl px-3 py-2 text-sm text-m-text mt-1 border-[#dcb5bb]" value={input.cardId} onChange={(e) => setInput({...input, cardId: e.target.value})}><option value="" disabled>選擇卡片</option>{cards.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}</select></div>)}
                                 </>
                             )}
                             <div className={isLoan ? "col-span-2" : ""}><label className="text-[10px] text-m-sub ml-1 uppercase tracking-wider">Date</label><input type="date" className="w-full rounded-xl px-3 py-2 text-sm text-m-text mt-1" value={input.date} onChange={(e) => setInput({...input, date: e.target.value})} /></div>
                         </div>
                         <div className="mb-4"><input type="text" placeholder="Add a note..." className="w-full bg-transparent border-b border-gray-100 py-2 text-sm text-m-text placeholder-gray-300 focus:border-[#dcb5bb] outline-none" value={input.note} onChange={(e) => setInput({...input, note: e.target.value})} /></div>
-                        <button onClick={handleSubmit} className={`w-full text-white py-3 rounded-2xl font-bold shadow-sm active:scale-95 transition-all text-sm tracking-widest ${isLoan ? 'bg-[#dcb5bb]' : 'bg-[#a6b4c3] hover:bg-[#97a6b6]'}`}>{isLoan ? 'CONFIRM LOAN' : 'ADD EXPENSE'}</button>
+                        <button onClick={handleSubmit} className={`w-full text-white py-3 rounded-2xl font-bold shadow-sm active:scale-95 transition-all text-sm tracking-widest ${isLoan ? 'bg-[#dcb5bb]' : 'bg-[#a6b4c3] hover:bg-[#97a6b6]'}`}>
+                            {isEditingTx ? '更新紀錄 (UPDATE)' : (isLoan ? 'CONFIRM LOAN' : 'ADD EXPENSE')}
+                        </button>
                     </Card>
-
                     <div className="space-y-4">
                         <div className="sticky top-0 bg-[#f7f5f4] z-10 py-3 space-y-2">
-                             {/* Month & Card Filter */}
                             <div className="flex gap-2 px-1">
-                                <div className="relative flex-1">
-                                    <select value={displayedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="w-full appearance-none bg-white border border-stone-200 text-m-text py-2 pl-4 pr-8 rounded-xl text-sm font-bold focus:outline-none focus:border-[#dcb5bb] shadow-sm">
-                                        {availableMonths.map(m => <option key={m} value={m}>{m}</option>)}
-                                    </select>
-                                    <Icon name="calendar" size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-m-sub pointer-events-none"/>
-                                </div>
-                                <div className="relative flex-1">
-                                     <select value={selectedCardFilter} onChange={(e) => setSelectedCardFilter(e.target.value)} className="w-full appearance-none bg-white border border-stone-200 text-m-text py-2 pl-4 pr-8 rounded-xl text-sm font-bold focus:outline-none focus:border-[#a6b4c3] shadow-sm">
-                                        <option value="all">所有支付</option>
-                                        <option value="cash">💰 僅現金</option>
-                                        {cards.map(c => <option key={c.id} value={c.id}>💳 {c.name}</option>)}
-                                    </select>
-                                    <Icon name="filter" size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-m-sub pointer-events-none"/>
-                                </div>
+                                <div className="relative flex-1"><select value={displayedMonth} onChange={(e) => setSelectedMonth(e.target.value)} className="w-full appearance-none bg-white border border-stone-200 text-m-text py-2 pl-4 pr-8 rounded-xl text-sm font-bold focus:outline-none focus:border-[#dcb5bb] shadow-sm">{availableMonths.map(m => <option key={m} value={m}>{m}</option>)}</select><Icon name="calendar" size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-m-sub pointer-events-none"/></div>
+                                <div className="relative flex-1"><select value={selectedCardFilter} onChange={(e) => setSelectedCardFilter(e.target.value)} className="w-full appearance-none bg-white border border-stone-200 text-m-text py-2 pl-4 pr-8 rounded-xl text-sm font-bold focus:outline-none focus:border-[#a6b4c3] shadow-sm"><option value="all">所有支付</option><option value="cash">💰 僅現金</option>{cards.map(c => <option key={c.id} value={c.id}>💳 {c.name}</option>)}</select><Icon name="filter" size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-m-sub pointer-events-none"/></div>
                             </div>
-                            
-                            <div className="flex justify-between items-center px-2">
-                                <div className="text-[10px] text-m-sub flex flex-col">
-                                    <span className="font-bold">{filterDescription}</span>
-                                    <span className="opacity-70">本期應繳總額</span>
-                                </div>
-                                <div className="text-lg font-bold text-[#5e5a5a]">${currentMonthTotal.toLocaleString()}</div>
-                            </div>
+                            <div className="flex justify-between items-center px-2"><div className="text-[10px] text-m-sub flex flex-col"><span className="font-bold">{filterDescription}</span><span className="opacity-70">本期應繳總額</span></div><div className="text-lg font-bold text-[#5e5a5a]">${currentMonthTotal.toLocaleString()}</div></div>
                         </div>
-
                         <div className="space-y-3 pb-24">
-                            {currentMonthItems.length === 0 ? (
-                                <div className="text-center py-10 text-m-sub text-xs">此區間無紀錄</div>
-                            ) : (
-                                currentMonthItems.map((item) => (
-                                    <div key={item.id} className="bg-white p-4 rounded-[20px] shadow-[0_2px_10px_-5px_rgba(0,0,0,0.03)] flex justify-between items-center border border-white">
-                                        <div className="flex items-center gap-3">
-                                            <div className={`p-3 rounded-full shrink-0 ${item.type === 'lending' ? 'bg-[#dcb5bb]/20 text-[#dcb5bb]' : item.method === '刷卡' ? 'bg-[#eaddcf]/30 text-[#cbbba9]' : 'bg-[#b5c4b1]/20 text-[#96a891]'}`}>{item.type === 'lending' ? <Icon name="heart-handshake" size={18}/> : item.method === '刷卡' ? <Icon name="credit-card" size={18}/> : <Icon name="banknote" size={18}/>}</div>
-                                            <div>
-                                                <div className={`font-medium text-sm ${item.type === 'lending' ? 'text-m-pink' : 'text-m-text'}`}>{item.category}</div>
-                                                <div className="text-[10px] text-m-sub font-light">
-                                                    {item.date.slice(5)} {item.note && `· ${item.note}`}
-                                                    {item.method === '刷卡' && item.cardId && (
-                                                        <span className="ml-1 text-[#a6b4c3] bg-gray-50 px-1 rounded">
-                                                            {cards.find(c => c.id === item.cardId)?.name || 'Credit Card'}
-                                                        </span>
-                                                    )}
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="flex items-center gap-3"><span className={`font-medium text-sm ${item.type === 'lending' ? 'text-m-pink' : 'text-m-text'}`}>-${Number(item.amount).toLocaleString()}</span><button onClick={() => onDelete(item.id)} className="text-gray-200 hover:text-[#dcb5bb] transition-colors"><Icon name="trash-2" size={16}/></button></div>
+                            {currentMonthItems.length === 0 ? (<div className="text-center py-10 text-m-sub text-xs">此區間無紀錄</div>) : (currentMonthItems.map((item) => (
+                                <div key={item.id} className={`bg-white p-4 rounded-[20px] shadow-[0_2px_10px_-5px_rgba(0,0,0,0.03)] flex justify-between items-center border ${isEditingTx && input.id === item.id ? 'border-[#dcb5bb] ring-1 ring-[#dcb5bb]' : 'border-white'}`}>
+                                    <div className="flex items-center gap-3">
+                                        <div className={`p-3 rounded-full shrink-0 ${item.type === 'lending' ? 'bg-[#dcb5bb]/20 text-[#dcb5bb]' : item.method === '刷卡' ? 'bg-[#eaddcf]/30 text-[#cbbba9]' : 'bg-[#b5c4b1]/20 text-[#96a891]'}`}>{item.type === 'lending' ? <Icon name="heart-handshake" size={18}/> : item.method === '刷卡' ? <Icon name="credit-card" size={18}/> : <Icon name="banknote" size={18}/>}</div>
+                                        <div><div className={`font-medium text-sm ${item.type === 'lending' ? 'text-m-pink' : 'text-m-text'}`}>{item.category}</div><div className="text-[10px] text-m-sub font-light">{item.date.slice(5)} {item.note && `· ${item.note}`} {item.method === '刷卡' && item.cardId && (<span className="ml-1 text-[#a6b4c3] bg-gray-50 px-1 rounded">{cards.find(c => c.id === item.cardId)?.name || 'Credit Card'}</span>)}</div></div>
                                     </div>
-                                ))
-                            )}
-                        </div>
-                    </div>
-                </div>
-            );
-        };
-
-        const AnalysisView = ({ transactions }) => {
-            const today = new Date();
-            const currentMonthKey = today.toISOString().slice(0, 7);
-            const expenses = transactions.filter(t => t.type === 'expense');
-            const getMonthData = (monthKey) => expenses.filter(t => t.date.startsWith(monthKey));
-            const currentTotal = getMonthData(currentMonthKey).reduce((a, c) => a + parseFloat(c.amount), 0);
-            const categoryData = getMonthData(currentMonthKey).reduce((acc, curr) => {
-                const existing = acc.find(i => i.name === curr.category);
-                if (existing) existing.value += parseFloat(curr.amount); else acc.push({ name: curr.category, value: parseFloat(curr.amount) });
-                return acc;
-            }, []).sort((a,b) => b.value - a.value);
-
-            return (
-                <div className="space-y-6 pb-24 page-transition px-1 pt-4">
-                    <h2 className="text-xl font-bold text-m-text ml-2 tracking-wide">Analytics</h2>
-                    <Card className="bg-[#a6b4c3] border-none text-white">
-                        <div className="flex justify-between items-start mb-6">
-                            <div><div className="text-white/60 text-xs tracking-widest uppercase mb-1">Spending this month</div><div className="text-3xl font-light">${currentTotal.toLocaleString()}</div></div>
-                            <div className="bg-white/20 p-2 rounded-xl"><Icon name="pie-chart" className="text-white"/></div>
-                        </div>
-                        <div className="text-[10px] text-white/50">* 不含男友借款 (借款屬資產轉移)</div>
-                    </Card>
-                    <Card><h3 className="text-xs font-bold text-m-sub text-center mb-6 tracking-widest uppercase">Category Breakdown</h3><SimplePieChart data={categoryData} /></Card>
-                </div>
-            );
-        };
-
-        const SavingsView = ({ transactions, onDelete }) => {
-            const [filterMonth, setFilterMonth] = useState('all');
-            const savingsHistory = useMemo(() => transactions.filter(t => ['deposit_cash', 'deposit_etf', 'repayment'].includes(t.type)), [transactions]);
-            const availableMonths = useMemo(() => {
-                const months = new Set(savingsHistory.map(t => t.date.substring(0, 7)));
-                return Array.from(months).sort().reverse();
-            }, [savingsHistory]);
-            const chartData = useMemo(() => {
-                const grouped = savingsHistory.reduce((acc, curr) => {
-                    const m = curr.date.substring(0, 7);
-                    if (!acc[m]) acc[m] = { month: m, cash: 0, etf: 0, repay: 0, total: 0 };
-                    const amt = parseFloat(curr.amount);
-                    if (curr.type === 'deposit_cash') acc[m].cash += amt;
-                    if (curr.type === 'deposit_etf') acc[m].etf += amt;
-                    if (curr.type === 'repayment') acc[m].repay += amt;
-                    acc[m].total += amt;
-                    return acc;
-                }, {});
-                return Object.values(grouped).sort((a,b) => a.month.localeCompare(b.month));
-            }, [savingsHistory]);
-            const displayedRecords = useMemo(() => {
-                const filtered = filterMonth === 'all' ? savingsHistory : savingsHistory.filter(t => t.date.startsWith(filterMonth));
-                const groupedByMonth = filtered.reduce((acc, curr) => {
-                    const m = curr.date.substring(0, 7);
-                    if (!acc[m]) acc[m] = [];
-                    acc[m].push(curr);
-                    return acc;
-                }, {});
-                return Object.keys(groupedByMonth).sort().reverse().map(month => ({ month, items: groupedByMonth[month].sort((a, b) => b.id - a.id) }));
-            }, [savingsHistory, filterMonth]);
-
-            return (
-                <div className="space-y-6 pb-24 page-transition px-1 pt-4">
-                    <div className="flex justify-between items-center px-2">
-                        <h2 className="text-xl font-bold text-m-text tracking-wide">Savings</h2>
-                        <div className="relative">
-                            <select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="appearance-none bg-white border border-stone-200 text-m-sub py-1.5 pl-4 pr-8 rounded-full text-xs font-medium focus:outline-none focus:border-[#dcb5bb]"><option value="all">All Time</option>{availableMonths.map(m => <option key={m} value={m}>{m}</option>)}</select>
-                            <Icon name="chevron-down" size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-m-sub pointer-events-none"/>
-                        </div>
-                    </div>
-                    <Card><h3 className="text-xs font-bold text-m-sub mb-2 ml-1 tracking-widest uppercase">Trend (6 Months)</h3><StackedBarChart data={chartData} /></Card>
-                    <div className="space-y-4">
-                         {displayedRecords.map(({ month, items }) => (
-                            <div key={month}>
-                                <div className="sticky top-0 bg-[#f7f5f4] z-10 py-2 mb-1 px-2"><span className="text-xs font-bold text-m-sub">{month}</span></div>
-                                <div className="space-y-3">
-                                    {items.map(item => (
-                                        <div key={item.id} className="bg-white p-4 rounded-[20px] shadow-[0_2px_10px_-5px_rgba(0,0,0,0.03)] flex justify-between items-center border border-white">
-                                            <div className="flex items-center gap-3">
-                                                <div className={`p-3 rounded-full shrink-0 ${item.type==='deposit_cash' ? 'bg-[#b5c4b1]/20 text-[#8a9986]' : item.type==='deposit_etf' ? 'bg-[#a6b4c3]/20 text-[#8594a3]' : 'bg-[#dcb5bb]/20 text-[#bc969c]'}`}>{item.type==='deposit_cash' ? <Icon name="banknote" size={18}/> : item.type==='deposit_etf' ? <Icon name="landmark" size={18}/> : <Icon name="user-minus" size={18}/>}</div>
-                                                <div><div className="font-medium text-sm text-m-text">{item.type==='deposit_cash' ? 'Cash Deposit' : item.type==='deposit_etf' ? 'ETF Invest' : 'Repayment'}</div><div className="text-[10px] text-m-sub font-light">{item.date} {item.note && `· ${item.note}`}</div></div>
-                                            </div>
-                                            <div className="flex items-center gap-3"><span className="font-medium text-sm text-m-text">+${Number(item.amount).toLocaleString()}</span><button onClick={() => onDelete(item.id)} className="text-gray-200 hover:text-[#dcb5bb] transition-colors"><Icon name="trash-2" size={16}/></button></div>
-                                        </div>
-                                    ))}
+                                    <div className="flex items-center gap-2">
+                                        <span className={`font-medium text-sm ${item.type === 'lending' ? 'text-m-pink' : 'text-m-text'}`}>-${Number(item.amount).toLocaleString()}</span>
+                                        <button onClick={() => startEditTransaction(item)} className="text-gray-300 hover:text-blue-400 p-1"><Icon name="pencil" size={16}/></button>
+                                        <button onClick={() => onDelete(item.id)} className="text-gray-300 hover:text-red-400 p-1"><Icon name="trash-2" size={16}/></button>
+                                    </div>
                                 </div>
-                            </div>
-                        ))}
+                            )))}
+                        </div>
                     </div>
                 </div>
             );
@@ -874,6 +709,12 @@
                 setTransactions([...transactions, ...itemsWithId]);
             };
             const handleSingleTransaction = (item) => { setTransactions([{...item, id: Date.now(), amount: parseFloat(item.amount)}, ...transactions]); };
+            
+            // New: Handle Update
+            const handleUpdateTransaction = (updatedItem) => {
+                setTransactions(transactions.map(t => t.id === updatedItem.id ? { ...t, ...updatedItem, amount: parseFloat(updatedItem.amount) } : t));
+            };
+
             const handleDelete = (id) => { if(confirm("Delete this transaction?")) setTransactions(transactions.filter(t => t.id !== id)); };
 
             return (
@@ -892,6 +733,7 @@
                                 onDelete={handleDelete}
                                 paidBills={paidBills}
                                 setPaidBills={setPaidBills}
+                                onUpdateTransactions={handleUpdateTransaction}
                             />
                         )}
                         {activeTab === 'analysis' && <AnalysisView transactions={transactions} />}
@@ -906,4 +748,5 @@
     </script>
 </body>
 </html>
+
 
