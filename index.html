@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
-    <title>77富婆計劃 V9.0</title>
+    <title>77富婆計劃 V9.1</title>
     
     <!-- React & Libraries -->
     <script crossorigin src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
@@ -181,7 +181,7 @@
             );
         };
 
-        // --- NEW: Category Manager Modal ---
+        // --- Category Manager Modal ---
         const CategoryManagerModal = ({ categories, onClose, onUpdateCategories }) => {
             const [newCategory, setNewCategory] = useState('');
             const [editIndex, setEditIndex] = useState(-1);
@@ -221,7 +221,7 @@
                 <div className="fixed inset-0 bg-black/20 backdrop-blur-sm z-50 flex items-center justify-center p-4">
                     <CustomConfirmModal 
                         isOpen={deleteTarget !== null}
-                        message="確定刪除此分類嗎？歷史記帳資料不會受影響。"
+                        message="確定刪除此分類嗎？"
                         onConfirm={confirmDelete}
                         onCancel={() => setDeleteTarget(null)}
                     />
@@ -348,13 +348,13 @@
         const BillCheckList = ({ cards, transactions, selectedMonth, paidStatus, setPaidStatus }) => {
             const getBillInfo = (card) => {
                 const stmtDay = parseInt(card.stmtDay);
-                if (isNaN(stmtDay)) return { total: 0, dateRange: '', dueDate: '-' };
+                if (isNaN(stmtDay)) return { total: 0, dueDateDisplay: '-' };
                 const [year, month] = selectedMonth.split('-').map(Number);
                 const endDate = new Date(year, month - 1, stmtDay); 
                 const startDate = new Date(year, month - 2, stmtDay + 1); 
                 const dueDateDisplay = `${card.dueDay}日`;
                 const total = transactions.filter(t => t.type !== 'lending' && t.cardId === card.id).filter(t => {
-                    const txDate = new Date(t.date);
+                    const txDate = new Date(t.date || new Date()); // Safer date
                     return txDate >= startDate && txDate <= endDate;
                 }).reduce((acc, curr) => acc + parseFloat(curr.amount), 0);
                 return { total, dueDateDisplay };
@@ -478,11 +478,10 @@
                     category: tx.category,
                     customCategory: '',
                     note: tx.note || '',
-                    date: tx.date
+                    date: tx.date || new Date().toISOString().split('T')[0] // Safe date
                 });
                 setIsLoan(tx.type === 'lending');
                 setIsEditingTx(true);
-                // Scroll to top to see form
                 window.scrollTo({ top: 0, behavior: 'smooth' });
             };
 
@@ -504,11 +503,9 @@
                 };
 
                 if (isEditingTx && input.id) {
-                    // Update existing
                     onUpdateTransactions({ ...newTx, id: input.id });
                     setIsEditingTx(false);
                 } else {
-                    // Add new
                     onSaveTransaction(newTx);
                 }
 
@@ -518,18 +515,20 @@
                 setSelectedMonth(input.date.substring(0, 7));
             };
 
+            // SAFE: Always default date to empty string before substring
             const expenseHistory = transactions.filter(t => t.type === 'expense' || t.type === 'lending');
             const availableMonths = useMemo(() => {
-                const months = new Set(expenseHistory.map(t => t.date.substring(0, 7)));
+                const months = new Set(expenseHistory.map(t => (t.date || new Date().toISOString()).substring(0, 7)));
                 months.add(new Date().toISOString().substring(0, 7));
                 return Array.from(months).sort().reverse();
             }, [expenseHistory]);
             const displayedMonth = selectedMonth || availableMonths[0];
 
             let filterDescription = "", filteredItems = [];
+            // SAFE: Check date before startsWith
             if (selectedCardFilter === 'all' || selectedCardFilter === 'cash') {
                 filterDescription = selectedCardFilter === 'all' ? '當月總支出 (自然月)' : '當月現金支出';
-                filteredItems = expenseHistory.filter(t => t.date.startsWith(displayedMonth) && (selectedCardFilter === 'all' ? true : t.method === '現金'));
+                filteredItems = expenseHistory.filter(t => (t.date || '').startsWith(displayedMonth) && (selectedCardFilter === 'all' ? true : t.method === '現金'));
             } else {
                 const selectedCard = cards.find(c => c.id === selectedCardFilter);
                 if (selectedCard) {
@@ -540,10 +539,10 @@
                         const startDate = new Date(year, month - 2, stmtDay + 1); 
                         const fmt = (d) => `${d.getMonth()+1}/${d.getDate()}`;
                         filterDescription = `${selectedCard.name} (${fmt(startDate)} - ${fmt(endDate)})`;
-                        filteredItems = expenseHistory.filter(t => { if (t.cardId !== selectedCardFilter) return false; const txDate = new Date(t.date); return txDate >= startDate && txDate <= endDate; });
+                        filteredItems = expenseHistory.filter(t => { if (t.cardId !== selectedCardFilter) return false; const txDate = new Date(t.date || new Date()); return txDate >= startDate && txDate <= endDate; });
                     } else {
                         filterDescription = `${selectedCard.name} (自然月)`;
-                        filteredItems = expenseHistory.filter(t => t.date.startsWith(displayedMonth) && t.cardId === selectedCardFilter);
+                        filteredItems = expenseHistory.filter(t => (t.date || '').startsWith(displayedMonth) && t.cardId === selectedCardFilter);
                     }
                 }
             }
@@ -630,6 +629,91 @@
             );
         };
 
+        const AnalysisView = ({ transactions }) => {
+            const today = new Date();
+            const currentMonthKey = today.toISOString().slice(0, 7);
+            const expenses = transactions.filter(t => t.type === 'expense');
+            // SAFE: Date check
+            const getMonthData = (monthKey) => expenses.filter(t => (t.date || '').startsWith(monthKey));
+            const currentTotal = getMonthData(currentMonthKey).reduce((a, c) => a + parseFloat(c.amount), 0);
+            const categoryData = getMonthData(currentMonthKey).reduce((acc, curr) => {
+                const existing = acc.find(i => i.name === curr.category);
+                if (existing) existing.value += parseFloat(curr.amount); else acc.push({ name: curr.category, value: parseFloat(curr.amount) });
+                return acc;
+            }, []).sort((a,b) => b.value - a.value);
+
+            return (
+                <div className="space-y-6 pb-24 page-transition px-1 pt-4">
+                    <h2 className="text-xl font-bold text-m-text ml-2 tracking-wide">Analytics</h2>
+                    <Card className="bg-[#a6b4c3] border-none text-white">
+                        <div className="flex justify-between items-start mb-6"><div><div className="text-white/60 text-xs tracking-widest uppercase mb-1">Spending this month</div><div className="text-3xl font-light">${currentTotal.toLocaleString()}</div></div><div className="bg-white/20 p-2 rounded-xl"><Icon name="pie-chart" className="text-white"/></div></div>
+                        <div className="text-[10px] text-white/50">* 不含男友借款 (借款屬資產轉移)</div>
+                    </Card>
+                    <Card><h3 className="text-xs font-bold text-m-sub text-center mb-6 tracking-widest uppercase">Category Breakdown</h3><SimplePieChart data={categoryData} /></Card>
+                </div>
+            );
+        };
+
+        const SavingsView = ({ transactions, onDelete }) => {
+            const [filterMonth, setFilterMonth] = useState('all');
+            const savingsHistory = useMemo(() => transactions.filter(t => ['deposit_cash', 'deposit_etf', 'repayment'].includes(t.type)), [transactions]);
+            // SAFE: Check date existence
+            const availableMonths = useMemo(() => {
+                const months = new Set(savingsHistory.map(t => (t.date || '').substring(0, 7)));
+                return Array.from(months).sort().reverse();
+            }, [savingsHistory]);
+            const chartData = useMemo(() => {
+                const grouped = savingsHistory.reduce((acc, curr) => {
+                    const m = (curr.date || '').substring(0, 7);
+                    if(!m) return acc;
+                    if (!acc[m]) acc[m] = { month: m, cash: 0, etf: 0, repay: 0, total: 0 };
+                    const amt = parseFloat(curr.amount);
+                    if (curr.type === 'deposit_cash') acc[m].cash += amt;
+                    if (curr.type === 'deposit_etf') acc[m].etf += amt;
+                    if (curr.type === 'repayment') acc[m].repay += amt;
+                    acc[m].total += amt;
+                    return acc;
+                }, {});
+                return Object.values(grouped).sort((a,b) => a.month.localeCompare(b.month));
+            }, [savingsHistory]);
+            const displayedRecords = useMemo(() => {
+                const filtered = filterMonth === 'all' ? savingsHistory : savingsHistory.filter(t => (t.date || '').startsWith(filterMonth));
+                const groupedByMonth = filtered.reduce((acc, curr) => {
+                    const m = (curr.date || '').substring(0, 7);
+                    if(!m) return acc;
+                    if (!acc[m]) acc[m] = [];
+                    acc[m].push(curr);
+                    return acc;
+                }, {});
+                return Object.keys(groupedByMonth).sort().reverse().map(month => ({ month, items: groupedByMonth[month].sort((a, b) => b.id - a.id) }));
+            }, [savingsHistory, filterMonth]);
+
+            return (
+                <div className="space-y-6 pb-24 page-transition px-1 pt-4">
+                    <div className="flex justify-between items-center px-2"><h2 className="text-xl font-bold text-m-text tracking-wide">Savings</h2><div className="relative"><select value={filterMonth} onChange={(e) => setFilterMonth(e.target.value)} className="appearance-none bg-white border border-stone-200 text-m-sub py-1.5 pl-4 pr-8 rounded-full text-xs font-medium focus:outline-none focus:border-[#dcb5bb]"><option value="all">All Time</option>{availableMonths.map(m => <option key={m} value={m}>{m}</option>)}</select><Icon name="chevron-down" size={14} className="absolute right-3 top-1/2 -translate-y-1/2 text-m-sub pointer-events-none"/></div></div>
+                    <Card><h3 className="text-xs font-bold text-m-sub mb-2 ml-1 tracking-widest uppercase">Trend (6 Months)</h3><StackedBarChart data={chartData} /></Card>
+                    <div className="space-y-4">
+                         {displayedRecords.map(({ month, items }) => (
+                            <div key={month}>
+                                <div className="sticky top-0 bg-[#f7f5f4] z-10 py-2 mb-1 px-2"><span className="text-xs font-bold text-m-sub">{month}</span></div>
+                                <div className="space-y-3">
+                                    {items.map(item => (
+                                        <div key={item.id} className="bg-white p-4 rounded-[20px] shadow-[0_2px_10px_-5px_rgba(0,0,0,0.03)] flex justify-between items-center border border-white">
+                                            <div className="flex items-center gap-3">
+                                                <div className={`p-3 rounded-full shrink-0 ${item.type==='deposit_cash' ? 'bg-[#b5c4b1]/20 text-[#8a9986]' : item.type==='deposit_etf' ? 'bg-[#a6b4c3]/20 text-[#8594a3]' : 'bg-[#dcb5bb]/20 text-[#bc969c]'}`}>{item.type==='deposit_cash' ? <Icon name="banknote" size={18}/> : item.type==='deposit_etf' ? <Icon name="landmark" size={18}/> : <Icon name="user-minus" size={18}/>}</div>
+                                                <div><div className="font-medium text-sm text-m-text">{item.type==='deposit_cash' ? 'Cash Deposit' : item.type==='deposit_etf' ? 'ETF Invest' : 'Repayment'}</div><div className="text-[10px] text-m-sub font-light">{item.date.slice(5)} {item.note && `· ${item.note}`}</div></div>
+                                            </div>
+                                            <div className="flex items-center gap-3"><span className="font-medium text-sm text-m-text">+${Number(item.amount).toLocaleString()}</span><button onClick={() => onDelete(item.id)} className="text-gray-200 hover:text-[#dcb5bb] transition-colors"><Icon name="trash-2" size={16}/></button></div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            );
+        };
+
         const NavBar = ({ activeTab, setActiveTab }) => (
             <div className="fixed bottom-6 left-6 right-6 bg-white/90 backdrop-blur-xl rounded-[30px] shadow-[0_8px_30px_rgba(0,0,0,0.08)] flex justify-between px-8 py-4 z-50 border border-white/50">
                 <button onClick={() => setActiveTab('home')} className={`flex flex-col items-center transition-all duration-300 ${activeTab === 'home' ? 'text-[#dcb5bb] scale-110' : 'text-[#d3d3d3] hover:text-[#b0b0b0]'}`}><Icon name="layout-dashboard" size={22}/></button>
@@ -641,8 +725,21 @@
 
         const App = () => {
             const [activeTab, setActiveTab] = useState('home');
+            
+            // --- DATA SANITIZATION ON LOAD ---
+            // This fixes the crash by ensuring all old data has valid date fields
+            const [transactions, setTransactions] = useState(() => {
+                const saved = safeStorage.get('richLadyTransactions', []);
+                return saved.map(t => ({
+                    ...t,
+                    // If date is missing, default to today to prevent crash
+                    date: t.date || new Date().toISOString().split('T')[0],
+                    amount: parseFloat(t.amount) || 0,
+                    id: t.id || Date.now() + Math.random()
+                }));
+            });
+
             const [config, setConfig] = useState(() => safeStorage.get('richLadyConfigV3', { initialCash: 0, initialEtf: 0, initialDebt: 0, etfReturnRate: 6 }));
-            const [transactions, setTransactions] = useState(() => safeStorage.get('richLadyTransactions', []));
             const [customCategories, setCustomCategories] = useState(() => safeStorage.get('richLadyCategories', ['娛樂', '飲食', '交通', '保險', '醫美', '治裝']));
             const [paidBills, setPaidBills] = useState(() => safeStorage.get('richLadyPaidBills', {}));
             
@@ -684,7 +781,7 @@
                 const history = transactions.filter(t => ['deposit_cash', 'deposit_etf', 'repayment'].includes(t.type));
                 let avgCashIn = 0, avgEtfIn = 0;
                 if (history.length > 0) {
-                    const uniqueMonths = new Set(history.map(t => t.date.substring(0, 7))).size || 1;
+                    const uniqueMonths = new Set(history.map(t => (t.date || '').substring(0, 7))).size || 1;
                     const totalCashIn = history.filter(t => t.type === 'deposit_cash' || t.type === 'repayment').reduce((acc, t) => acc + parseFloat(t.amount), 0);
                     const totalEtfIn = history.filter(t => t.type === 'deposit_etf').reduce((acc, t) => acc + parseFloat(t.amount), 0);
                     avgCashIn = totalCashIn / uniqueMonths;
@@ -715,7 +812,12 @@
                 setTransactions(transactions.map(t => t.id === updatedItem.id ? { ...t, ...updatedItem, amount: parseFloat(updatedItem.amount) } : t));
             };
 
-            const handleDelete = (id) => { if(confirm("Delete this transaction?")) setTransactions(transactions.filter(t => t.id !== id)); };
+            const handleDelete = (id) => { 
+                // Removed window.confirm to rely on custom modal? 
+                // Wait, users only complained about CARD deletion. Transaction deletion is usually fine with confirm.
+                // Keeping window.confirm for transactions as it's simpler and wasn't the bug source.
+                if(confirm("Delete this transaction?")) setTransactions(transactions.filter(t => t.id !== id)); 
+            };
 
             return (
                 <div className="max-w-md mx-auto min-h-screen relative overflow-hidden bg-[#f7f5f4]">
